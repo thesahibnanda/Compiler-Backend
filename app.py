@@ -2,9 +2,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import uuid
+import psutil
+import platform
 from models.MakeFileUtils import MakeFileUtils
 from models.ExecuteUtils import ExecuteUtils
 from models.HackUtils import HackUtils
+from models.LlaMaUtils import LlaMaUtils
+from config import Config
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -46,6 +50,10 @@ async def execute(request: ExecuteRequest):
             return JSONResponse(status_code=400, content={"error": True, "message": "Invalid extension"})
 
         file_extension = "py" if request.extension == "Python" else "cpp"
+        
+        if (file_extension == "py" and LlaMaUtils.check_malicious_code_for_python(request.code, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)) or (file_extension == "cpp" and (LlaMaUtils.check_malicious_code_for_cpp(request.code, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS))):
+            return JSONResponse(status_code=200, content={"error": True, "message": "We have very strict security policies.\nYour code is not allowed as it contains potentially harmful elements.\nIf you believe this is a mistake, please comment on the below blog post.\n`https://codeforces.com/blog/entry/135689`"})
+        
         file_name = f"{uuid.uuid4()}.{file_extension}"
         
         file_path = MakeFileUtils.make_file(request.code, file_name)
@@ -79,20 +87,54 @@ async def hack(request: HackRequest):
         if request.mode.how not in {"manual", "generated"}:
             return JSONResponse(status_code=400, content={"error": True, "message": "Invalid mode 'how'"})
 
+        correct_file_extension = "py" if request.correctExtension == "Python" else "cpp"
+        new_file_extension = "py" if request.newExtension == "Python" else "cpp"
+
+        if (correct_file_extension == "py" and LlaMaUtils.check_malicious_code_for_python(
+                request.correctCode, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)) or \
+           (correct_file_extension == "cpp" and LlaMaUtils.check_malicious_code_for_cpp(
+                request.correctCode, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)):
+            return JSONResponse(status_code=200, content={
+                "error": True,
+                "message": "We have very strict security policies.\nYour correct code is not allowed as it contains potentially harmful elements.\nIf you believe this is a mistake, please comment on the below blog post.\n`https://codeforces.com/blog/entry/135689`"
+            })
+
+        if (new_file_extension == "py" and LlaMaUtils.check_malicious_code_for_python(
+                request.newCode, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)) or \
+           (new_file_extension == "cpp" and LlaMaUtils.check_malicious_code_for_cpp(
+                request.newCode, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)):
+            return JSONResponse(status_code=200, content={
+                "error": True,
+                "message": "We have very strict security policies.\nYour new code is not allowed as it contains potentially harmful elements.\nIf you believe this is a mistake, please comment on the below blog post.\n`https://codeforces.com/blog/entry/135689`"
+            })
+
         if request.mode.how == "manual":
             if len(request.mode.tc) != 1:
                 return JSONResponse(status_code=400, content={"error": True, "message": "Manual mode requires a single test case"})
             test_case = request.mode.tc[0]
+
         elif request.mode.how == "generated":
             if len(request.mode.tc) < 2:
                 return JSONResponse(status_code=400, content={"error": True, "message": "Generated mode requires generator code and extension"})
+            
             generator_code, generator_extension = request.mode.tc[0], request.mode.tc[1]
-            generator_file_name = f"{uuid.uuid4()}.{generator_extension.lower()}"
+            generator_file_extension = "py" if generator_extension == "Python" else "cpp"
+
+            if (generator_file_extension == "py" and LlaMaUtils.check_malicious_code_for_python(
+                    generator_code, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)) or \
+               (generator_file_extension == "cpp" and LlaMaUtils.check_malicious_code_for_cpp(
+                    generator_code, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)):
+                return JSONResponse(status_code=200, content={
+                    "error": True,
+                    "message": "Your generator code contains potentially harmful elements and cannot be executed.\nIf you believe this is a mistake, please comment on the below blog post.\n`https://codeforces.com/blog/entry/135689`"
+                })
+
+            generator_file_name = f"{uuid.uuid4()}.{generator_file_extension}"
             generator_file_path = MakeFileUtils.make_file(generator_code, generator_file_name)
             if not generator_file_path:
                 raise HTTPException(status_code=500, detail="Failed to create generator file for test case generation")
 
-            generator_output = ExecuteUtils.execute_py(generator_file_path, time_limit=1, memory_limit_mb=256) if generator_extension == "Python" else ExecuteUtils.execute_cpp(generator_file_path, "c++17", time_limit=1, memory_limit_mb=256)
+            generator_output = ExecuteUtils.execute_py(generator_file_path, time_limit=10, memory_limit_mb=1024) if generator_file_extension == "py" else ExecuteUtils.execute_cpp(generator_file_path, "c++17", time_limit=1, memory_limit_mb=256)
             MakeFileUtils.delete_file(generator_file_path)
 
             if isinstance(generator_output, str):
@@ -148,6 +190,7 @@ async def hack(request: HackRequest):
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": True, "message": str(e)})
+
     
 @app.get("/healthz")
 async def healthz():
@@ -159,3 +202,48 @@ async def healthz():
             "details": "Service is operational"
         }
     )
+
+@app.get("/metrics")
+async def metrics():
+    try:
+        memory = psutil.virtual_memory()
+        available_memory_mb = memory.available / (1024 * 1024)  
+        os_type = platform.system()
+        is_linux = os_type == "Linux"
+        if not is_linux:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": True,
+                    "message": "System health check failed. OS is not Linux.",
+                    "available_memory_mb": available_memory_mb,
+                    "os_type": os_type
+                }
+            )
+            
+        if available_memory_mb < 100:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": True,
+                    "message": "Memory critically low.",
+                    "available_memory_mb": available_memory_mb,
+                    "os_type": os_type
+                }
+            )
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "error": False,
+                "message": "System health is good.",
+                "available_memory_mb": available_memory_mb,
+                "os_type": os_type
+            }
+        )
+    
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": True, "message": f"An error occurred: {str(e)}"}
+        )
