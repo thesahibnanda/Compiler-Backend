@@ -6,7 +6,6 @@ import psutil
 import platform
 from models.MakeFileUtils import MakeFileUtils
 from models.ExecuteUtils import ExecuteUtils
-from models.HackUtils import HackUtils
 from models.LlaMaUtils import LlaMaUtils
 from config import Config
 from typing import List
@@ -35,13 +34,18 @@ class HackRequest(BaseModel):
     class Mode(BaseModel):
         how: str
         tc: List[str]
+    
+    class TimeAndMemory(BaseModel):
+        time: int = 1
+        memory: int = 256
 
     mode: Mode
     correctCode: str
     correctExtension: str = Field(..., pattern=r"^(Python|C\+\+)$", description="File extension for correct code: Python or C++")
+    correctCodeTimeAndMemory: TimeAndMemory
     newCode: str
     newExtension: str = Field(..., pattern=r"^(Python|C\+\+)$", description="File extension for new code: Python or C++")
-
+    newCodeTimeAndMemory: TimeAndMemory
 
 @app.post("/execute")
 async def execute(request: ExecuteRequest):
@@ -90,6 +94,7 @@ async def hack(request: HackRequest):
         correct_file_extension = "py" if request.correctExtension == "Python" else "cpp"
         new_file_extension = "py" if request.newExtension == "Python" else "cpp"
 
+        # Check for malicious code
         if (correct_file_extension == "py" and LlaMaUtils.check_malicious_code_for_python(
                 request.correctCode, Config.GROQ_MODEL_NAME, Config.GROQ_API_KEYS)) or \
            (correct_file_extension == "cpp" and LlaMaUtils.check_malicious_code_for_cpp(
@@ -141,6 +146,7 @@ async def hack(request: HackRequest):
                 return JSONResponse(status_code=500, content={"error": True, "message": f"Error in generator execution: {generator_output}"})
             test_case, _, _ = generator_output
 
+        # Create files for correct and new code
         correct_file_name = f"{uuid.uuid4()}.{request.correctExtension.lower()}"
         correct_file_path = MakeFileUtils.make_file(request.correctCode, correct_file_name)
         if not correct_file_path:
@@ -152,9 +158,34 @@ async def hack(request: HackRequest):
             MakeFileUtils.delete_file(correct_file_path)
             raise HTTPException(status_code=500, detail="Failed to create file for new code execution")
 
-        correct_output = ExecuteUtils.execute_py(correct_file_path, 1, 256, test_case) if request.correctExtension == "Python" else ExecuteUtils.execute_cpp(correct_file_path, "c++17", 1, 256, test_case)
-        new_output = ExecuteUtils.execute_py(new_file_path, 1, 256, test_case) if request.newExtension == "Python" else ExecuteUtils.execute_cpp(new_file_path, "c++17", 1, 256, test_case)
+        # Execute the correct and new code with specified time and memory limits
+        correct_output = ExecuteUtils.execute_py(
+            correct_file_path, 
+            request.correctCodeTimeAndMemory.time, 
+            request.correctCodeTimeAndMemory.memory, 
+            test_case
+        ) if request.correctExtension == "Python" else ExecuteUtils.execute_cpp(
+            correct_file_path, 
+            "c++17", 
+            request.correctCodeTimeAndMemory.time, 
+            request.correctCodeTimeAndMemory.memory, 
+            test_case
+        )
 
+        new_output = ExecuteUtils.execute_py(
+            new_file_path, 
+            request.newCodeTimeAndMemory.time, 
+            request.newCodeTimeAndMemory.memory, 
+            test_case
+        ) if request.newExtension == "Python" else ExecuteUtils.execute_cpp(
+            new_file_path, 
+            "c++17", 
+            request.newCodeTimeAndMemory.time, 
+            request.newCodeTimeAndMemory.memory, 
+            test_case
+        )
+
+        # Clean up files
         MakeFileUtils.delete_file(correct_file_path)
         MakeFileUtils.delete_file(new_file_path)
 
@@ -190,6 +221,7 @@ async def hack(request: HackRequest):
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": True, "message": str(e)})
+
 
     
 @app.get("/healthz")
