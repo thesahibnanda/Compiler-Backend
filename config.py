@@ -13,8 +13,8 @@ class Config:
     CPP_VERSIONS = {"c++17", "c++14", "c++11", "c++98", "c++03", "c++20"}
     DEFAULT_CPP_VERSION = "c++17"
     DOCKER_IMAGE_NAME = "code-sandbox"
-    CPUS = 2
-    PROCESSES = 250
+    CPUS = 0.5
+    PROCESSES = 100
     
     class ExecuteRequest(BaseModel):
         code: str
