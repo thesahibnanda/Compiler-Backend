@@ -67,6 +67,7 @@ def step2():
         sys.exit(1)
 
 def step3():
+
     try:
         print("Starting Gunicorn server...")
         subprocess.run(

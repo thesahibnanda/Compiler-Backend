@@ -17,7 +17,7 @@ class DockerUtils:
             "--pids-limit", str(processes),
             "-v", f"{os.path.join(os.getcwd(), Config.TEMP_FOLDER_TO_READ)}:/{Config.DOCKER_FOLDER_TO_READ}:ro",
             "--network", "none",
-            "--user", "nobody",
+            "--user", "root",
             image,
             "bash", "-c",
             f"echo \"{stdin}\" | timeout {time_limit}s python3 /{Config.DOCKER_FOLDER_TO_READ}/{file_path.split('/')[-2]}/{file_path.split('/')[-1]}"
@@ -64,13 +64,29 @@ class DockerUtils:
         except Exception:
             return "Error in constructing paths for compilation."
 
-        command = (
-            f"mkdir -p {output_dir} && "
+        # Command to create directory as root
+        mkdir_command = f"mkdir -p {output_dir}"
+
+        # Command to compile as nobody user
+        compile_command = (
             f"timeout {time_limit}s g++ --std={version} "
             f"/{Config.DOCKER_FOLDER_TO_READ}/{file_path.split('/')[-2]}/{file_path.split('/')[-1]} -o {output_path}"
         )
 
-        docker_command = [
+        # Run mkdir as root
+        docker_mkdir_command = [
+            "docker",
+            "run",
+            "--rm",
+            "--user", "root",
+            "-v", f"{os.path.join(os.getcwd(), Config.TEMP_FOLDER_TO_WRITE)}:/{Config.DOCKER_FOLDER_TO_WRITE}",
+            image,
+            "bash", "-c",
+            mkdir_command
+        ]
+
+        # Run g++ as nobody
+        docker_compile_command = [
             "docker",
             "run",
             "--rm",
@@ -83,12 +99,16 @@ class DockerUtils:
             "--user", "nobody",
             image,
             "bash", "-c",
-            command
+            compile_command
         ]
 
         try:
+            # Run mkdir command
+            subprocess.run(docker_mkdir_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            # Run compile command
             result = subprocess.run(
-                docker_command,
+                docker_compile_command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -116,6 +136,7 @@ class DockerUtils:
     def execute_cpp(image: str, memory: int, time_limit: int, cpus: int, processes: int, path: str, stdin: str):
         if not (os.path.isabs(path) and path.endswith(".out")):
             return f"Invalid executable path: {path}"
+        
         command = [
             "docker",
             "run",
