@@ -8,8 +8,17 @@ RUN apt update && apt install -y \
     && apt install -y libstdc++-$(gcc -dumpversion | cut -f1 -d.)-dev \
     && apt clean && rm -rf /var/lib/apt/lists/*
 
-# # Create a non-root user for better security
+# Create the /app_write directory and set permissions
+RUN mkdir -p /app_write && chmod 775 /app_write
+
+# Alternatively, set the owner to a specific user if running with non-root user
+# RUN chown sandboxuser:sandboxuser /app_write && chmod 775 /app_write
+
+# Optional: Create a non-root user for better security
 # RUN useradd -ms /bin/bash sandboxuser
 
-# # Switch to non-root user
+# Optional: Switch to non-root user
 # USER sandboxuser
+
+# Set the working directory (if needed)
+WORKDIR /app_write
