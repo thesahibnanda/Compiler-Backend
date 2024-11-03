@@ -1,4 +1,41 @@
+from pydantic import BaseModel, Field
+from typing import List, Literal
+
+PATTERN: Literal[None] = r"^(Python|C\+\+)$"
+DESCRIPTION: str = "File extension for code: Python or C++"
+
 class Config:
-    TEMP_FOLDER = "tmp"
-    GROQ_API_KEYS = ["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","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","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","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","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"]
-    GROQ_MODEL_NAME = "llama3-8b-8192"
+    ALLOWED_ORIGINS = ["*"]
+    TEMP_FOLDER_TO_READ = "read_temp"
+    TEMP_FOLDER_TO_WRITE = "write_temp"
+    DOCKER_FOLDER_TO_READ = "app_read"
+    DOCKER_FOLDER_TO_WRITE = "app_write"
+    CPP_VERSIONS = {"c++17", "c++14", "c++11", "c++98", "c++03", "c++20"}
+    DEFAULT_CPP_VERSION = "c++17"
+    DOCKER_IMAGE_NAME = "code-sandbox"
+    CPUS = 2
+    PROCESSES = 250
+    
+    class ExecuteRequest(BaseModel):
+        code: str
+        extension: str = Field(..., pattern=PATTERN, description=DESCRIPTION)
+        time: int = 1
+        memory: int = 256
+        input: str = ""
+
+    class HackRequest(BaseModel):
+        class Mode(BaseModel):
+            how: str
+            tc: List[str]
+        
+        class TimeAndMemory(BaseModel):
+            time: int = 1
+            memory: int = 256
+
+        mode: Mode
+        correctCode: str
+        correctExtension: str = Field(..., pattern=PATTERN, description=DESCRIPTION)
+        correctCodeTimeAndMemory: TimeAndMemory
+        newCode: str
+        newExtension: str = Field(..., pattern=PATTERN, description=DESCRIPTION)
+        newCodeTimeAndMemory: TimeAndMemory

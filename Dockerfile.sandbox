@@ -1,0 +1,15 @@
+# Start with an Ubuntu base image (specify version for stability)
+FROM ubuntu:latest
+
+# Update the package list, install system dependencies, and clean up to reduce image size
+RUN apt update && apt install -y \
+    g++ \
+    python3 \
+    && apt install -y libstdc++-$(gcc -dumpversion | cut -f1 -d.)-dev \
+    && apt clean && rm -rf /var/lib/apt/lists/*
+
+# # Create a non-root user for better security
+# RUN useradd -ms /bin/bash sandboxuser
+
+# # Switch to non-root user
+# USER sandboxuser
