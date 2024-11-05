@@ -133,7 +133,7 @@ class ExecUtils:
         file_path = RetryUtils.run_with_retry(
             ExecUtils.make_file, content, 'C++', try_limit=ExecUtils.CONFIG["TRY_LIMIT"], delay=ExecUtils.CONFIG["DELAY"]
         )
-        output_file_path = os.path.join(*file_path[:-1], file_path[-1].split('.')[0]) + '.out'
+        output_file_path = os.path.join(*file_path[:-1], file_path[-1].split('.')[0])
 
         def set_limits_exec():
             nobody = pwd.getpwnam("nobody")
