@@ -129,14 +129,11 @@ class ExecUtils:
 
     @staticmethod
     def execute_cpp(content: str, input_str: str, timeout: int, memory_mb: int, processes: int) -> Union[Tuple[str, float, float], str]:
+        timeout+=0.5
         file_path = RetryUtils.run_with_retry(
             ExecUtils.make_file, content, 'C++', try_limit=ExecUtils.CONFIG["TRY_LIMIT"], delay=ExecUtils.CONFIG["DELAY"]
         )
         output_file_path = os.path.join(*file_path[:-1], file_path[-1].split('.')[0]) + '.out'
-
-        def set_limits_compile():
-            resource.setrlimit(resource.RLIMIT_AS, (memory_mb * 1024 * 1024, memory_mb * 1024 * 1024))
-            resource.setrlimit(resource.RLIMIT_NPROC, (processes, processes))
 
         def set_limits_exec():
             nobody = pwd.getpwnam("nobody")
@@ -152,8 +149,6 @@ class ExecUtils:
                 compile_command,
                 capture_output=True,
                 text=True,
-                timeout=timeout,
-                preexec_fn=set_limits_compile
             )
             elapsed_time_compile = time.time() - start_time
             peak_memory_mb_compile = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
