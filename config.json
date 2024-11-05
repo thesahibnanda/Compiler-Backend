@@ -1,0 +1,8 @@
+{
+  "TEMP_FOLDER": "temp",
+  "PROCESS": 100,
+  "ALLOWED_LANGUAGES": {"Python" : "py", "C++": "cpp"},
+  "TRY_LIMIT": 3,
+  "DELAY": 1
+}
+
