@@ -144,21 +144,14 @@ class ExecUtils:
 
         try:
             compile_command = ['g++', '--std=c++17', os.path.join(*file_path), '-o', output_file_path]
-            start_time = time.time()
+            
             compile_result = subprocess.run(
                 compile_command,
                 capture_output=True,
                 text=True,
             )
-            elapsed_time_compile = time.time() - start_time
-            peak_memory_mb_compile = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
-
-            if memory_mb < peak_memory_mb_compile or elapsed_time_compile > timeout:
-                return ERROR_WHILE_COMPILATION + (MEMORY_LIMIT_EXCEEDED if memory_mb < peak_memory_mb_compile else TIME_LIMIT_EXCEEDED)
-            if compile_result.returncode in [-6, -9] or compile_result.returncode != 0:
+            if compile_result.returncode != 0:
                 return ERROR_WHILE_COMPILATION + compile_result.stderr
-        except subprocess.TimeoutExpired:
-            return ERROR_WHILE_COMPILATION + TIME_LIMIT_EXCEEDED
         except subprocess.CalledProcessError as e:
             return ERROR_WHILE_COMPILATION + e.stderr
         except Exception as e:
